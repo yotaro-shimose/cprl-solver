@@ -162,7 +162,7 @@ _deps
 solver_tsptw
 
 # Trained Models
-trained_models/*
+trained-models
 
 # Temporary File
 temp.py
