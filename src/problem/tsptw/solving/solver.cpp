@@ -40,11 +40,12 @@ public:
     bool cache;
     float temperature;
     bool dominance;
+    string instance_path;
     /// Initialize options for example with name \a s
     OptionsTSPTW(const char *s, int number_cities0, int grid_size0, int max_tw_gap0, int max_tw_size0,
-                 bool cache0, float temperature0, bool dominance0)
+                 bool cache0, float temperature0, bool dominance0, string instance_path0)
         : Options(s), number_cities(number_cities0), grid_size(grid_size0), max_tw_gap(max_tw_gap0), max_tw_size(max_tw_size0),
-          cache(cache0), temperature(temperature0), dominance(dominance0) {}
+          cache(cache0), temperature(temperature0), dominance(dominance0), instance_path(instance_path0) {}
 };
 
 class TSPTW_DP : public IntMinimizeScript
@@ -102,7 +103,7 @@ public:
                               "/grid-" + std::to_string(opt.grid_size) + "-tw-" + std::to_string(opt.max_tw_gap) + "-" + std::to_string(opt.max_tw_size);
 
         auto to_run_module = py::module::import("src.problem.tsptw.solving.solver_binding");
-        python_binding = to_run_module.attr("SolverBinding")(model_folder, m, opt.grid_size, opt.max_tw_gap, opt.max_tw_size, seed, mode);
+        python_binding = to_run_module.attr("SolverBinding")(model_folder, m, opt.grid_size, opt.max_tw_gap, opt.max_tw_size, seed, mode, opt.instance_path);
 
         auto travel_time_python = python_binding.attr("get_travel_time_matrix")();
         this->travel_time = travel_time_python.cast<std::vector<std::vector<double>>>();
@@ -444,6 +445,16 @@ public:
 
         return output.str();
     }
+
+    std::vector<int> get_travel_to()
+    {
+        std::vector<int> travel_to;
+        for (int i = 0; i < m - 1; i++)
+        {
+            travel_to.push_back(this->travel_to[i].val());
+        }
+        return travel_to;
+    }
 };
 
 TSPTW_DP::ModelType stringToModel(std::string const &inString)
@@ -459,140 +470,216 @@ TSPTW_DP::ModelType stringToModel(std::string const &inString)
     throw cxxopts::OptionException("Invalid model argument");
 }
 
-int main(int argc, char *argv[])
+// Solver Function
+vector<int> solve(int n_city, string instance_path)
 {
-    /* Python embedding */
-    py::scoped_interpreter guard{};
 
-    cxxopts::Options options("PybindGecode", "One line description of MyProgram");
-    options.add_options()("luby", "luby scaling factor", cxxopts::value<int>()->default_value("1"))("temperature", "temperature for the randomness", cxxopts::value<float>()->default_value("1.0"))("size", "instance size", cxxopts::value<int>()->default_value("50"))("grid_size", "maximum grid size for generating the cities", cxxopts::value<int>()->default_value("100"))("max_tw_gap", "maximum gap between two consecutive time windows in the feasible solution generated", cxxopts::value<int>()->default_value("10"))("max_tw_size", "maximum time windows size", cxxopts::value<int>()->default_value("100"))("seed", "random seed", cxxopts::value<int>()->default_value("19"))("time", "Time limit in ms", cxxopts::value<int>()->default_value("6000"))("d_l", "LDS cutoff", cxxopts::value<int>()->default_value("50"))("model", "model to run", cxxopts::value<string>())("dominance", "enable dominance pruning", cxxopts::value<bool>()->default_value("1"))("cache", "enable cache", cxxopts::value<bool>()->default_value("1"));
-    auto result = options.parse(argc, argv);
-
+    // py::scoped_interpreter guard{};
+    best_cost = 100000000;
+    // Options Settings
     OptionsTSPTW opt("TSPTW problem",
-                     result["size"].as<int>(),
-                     result["grid_size"].as<int>(),
-                     result["max_tw_gap"].as<int>(),
-                     result["max_tw_size"].as<int>(),
-                     result["cache"].as<bool>(),
-                     result["temperature"].as<float>(),
-                     result["dominance"].as<bool>());
+                     n_city,
+                     100,
+                     10,
+                     100,
+                     1,
+                     1.,
+                     1,
+                     instance_path);
     opt.model(TSPTW_DP::RL_BAB, "rl-bab-dqn", "use RL with BAB and DQN");
     opt.model(TSPTW_DP::RL_DQN, "rl-ilds-dqn", "use RL with ILDS and DQN");
     opt.model(TSPTW_DP::RL_PPO, "rl-rbs-ppo", "use RL with RBS and PPO (implies restarts)");
     opt.model(TSPTW_DP::NN_HEURISTIC, "nearest", "use nearest heuristic with ILDS");
-    // TODO switch case on the model?
-    opt.model(stringToModel(result["model"].as<string>()));
-
+    opt.model(stringToModel("rl-bab-dqn"));
     opt.solutions(0);
-    opt.seed(result["seed"].as<int>());
-    opt.time(result["time"].as<int>());
-    opt.d_l(result["d_l"].as<int>());
+    opt.seed(19);
+    opt.time(6000);
+    opt.d_l(50);
 
-    if (opt.model() == TSPTW_DP::RL_DQN || opt.model() == TSPTW_DP::NN_HEURISTIC)
+    // Solver Initialization
+    Search::Options o;
+    Search::TimeStop ts(opt.time());
+    o.stop = &ts;
+    TSPTW_DP *p = new TSPTW_DP(opt);
+    o.d_l = opt.d_l();
+    BAB<TSPTW_DP> engine(p, o);
+    delete p;
+
+    // Solve
+    vector<int> solution;
+    while (TSPTW_DP *p = engine.next())
     {
-        Search::Options o;
-        Search::TimeStop ts(opt.time());
-        o.stop = &ts;
-        TSPTW_DP *p = new TSPTW_DP(opt);
-        o.d_l = opt.d_l();
-        LDS<TSPTW_DP> engine(p, o);
+        int cur_cost = p->cost().val();
+        if (cur_cost < best_cost)
+        {
+            best_cost = cur_cost;
+            int depth = engine.statistics().depth;
+            solution = p->get_travel_to();
+        }
         delete p;
-        cout << "n_city,seed,time,tour_cost" << std::endl;
-        while (TSPTW_DP *p = engine.next())
-        {
-            int cur_cost = p->cost().val();
-            if (cur_cost < best_cost)
-            {
-                best_cost = cur_cost;
-                int depth = engine.statistics().depth;
-                cout << p->to_string() << endl;
-            }
-            delete p;
-        }
-        cout << "BEST SOLUTION: " << best_cost << endl;
-        if (engine.stopped())
-        {
-            cout << "TIMEOUT - OPTIMALITY PROOF NOT REACHED" << endl;
-        }
-        else
-        {
-            cout << "SEARCH COMPLETED - SOLUTION FOUND IS OPTIMAL" << endl;
-        }
     }
 
-    else if (opt.model() == TSPTW_DP::RL_BAB)
+    if (engine.stopped())
     {
-        Search::Options o;
-        Search::TimeStop ts(opt.time());
-        o.stop = &ts;
-        TSPTW_DP *p = new TSPTW_DP(opt);
-        o.d_l = opt.d_l();
-        BAB<TSPTW_DP> engine(p, o);
-        delete p;
-        cout << "n_city,seed,time,tour_cost" << std::endl;
-        while (TSPTW_DP *p = engine.next())
-        {
-            int cur_cost = p->cost().val();
-            if (cur_cost < best_cost)
-            {
-                best_cost = cur_cost;
-                int depth = engine.statistics().depth;
-                cout << p->to_string() << endl;
-            }
-            delete p;
-        }
-        cout << "BEST SOLUTION: " << best_cost << endl;
-        if (engine.stopped())
-        {
-            cout << "TIMEOUT - OPTIMALITY PROOF NOT REACHED" << endl;
-        }
-        else
-        {
-            cout << "SEARCH COMPLETED - SOLUTION FOUND IS OPTIMAL" << endl;
-        }
+        cout << "TIMEOUT - OPTIMALITY PROOF NOT REACHED" << endl;
     }
-
-    else if (opt.model() == TSPTW_DP::RL_PPO)
-    {
-        Search::Options o;
-
-        Search::TimeStop ts(opt.time());
-        o.stop = &ts;
-        TSPTW_DP *p = new TSPTW_DP(opt);
-
-        Search::Cutoff *c = Search::Cutoff::luby(result["luby"].as<int>());
-        o.cutoff = c;
-        RBS<TSPTW_DP, BAB> engine(p, o);
-        delete p;
-
-        cout << "n_city,seed,time,tour_cost" << std::endl;
-        while (TSPTW_DP *p = engine.next())
-        {
-            int cur_cost = p->cost().val();
-            if (cur_cost < best_cost)
-            {
-                best_cost = cur_cost;
-                int num_nodes = engine.statistics().node;
-                int num_fail = engine.statistics().fail;
-                cout << p->to_string() << endl;
-            }
-            delete p;
-        }
-        cout << "BEST SOLUTION: " << best_cost << endl;
-        if (engine.stopped())
-        {
-            cout << "TIMEOUT - OPTIMALITY PROOF NOT REACHED" << endl;
-        }
-        else
-        {
-            cout << "SEARCH COMPLETED - SOLUTION FOUND IS OPTIMAL" << endl;
-        }
-    }
-
     else
     {
-        cout << "Model not implemented" << std::endl;
+        cout << "SEARCH COMPLETED - SOLUTION FOUND IS OPTIMAL" << endl;
     }
-
-    return 0;
+    return solution;
 }
+
+PYBIND11_MODULE(solver_tsptw, m)
+{
+    m.doc() = "rl-bab-dqn solver for tsptw";
+    m.def("solve", &solve, "solve and return tsptw solution");
+}
+
+// int main(int argc, char *argv[])
+// {
+//     /* Python embedding */
+//     py::scoped_interpreter guard{};
+
+//     cxxopts::Options options("PybindGecode", "One line description of MyProgram");
+//     options.add_options()("luby", "luby scaling factor", cxxopts::value<int>()->default_value("1"))("temperature", "temperature for the randomness", cxxopts::value<float>()->default_value("1.0"))("size", "instance size", cxxopts::value<int>()->default_value("50"))("grid_size", "maximum grid size for generating the cities", cxxopts::value<int>()->default_value("100"))("max_tw_gap", "maximum gap between two consecutive time windows in the feasible solution generated", cxxopts::value<int>()->default_value("10"))("max_tw_size", "maximum time windows size", cxxopts::value<int>()->default_value("100"))("seed", "random seed", cxxopts::value<int>()->default_value("19"))("time", "Time limit in ms", cxxopts::value<int>()->default_value("6000"))("d_l", "LDS cutoff", cxxopts::value<int>()->default_value("50"))("model", "model to run", cxxopts::value<string>())("dominance", "enable dominance pruning", cxxopts::value<bool>()->default_value("1"))("cache", "enable cache", cxxopts::value<bool>()->default_value("1"))("instance_path", "json filepath to load tsptw instance from", cxxopts::value<std::string>()->default_value(""));
+//     auto result = options.parse(argc, argv);
+
+//     OptionsTSPTW opt("TSPTW problem",
+//                      result["size"].as<int>(),
+//                      result["grid_size"].as<int>(),
+//                      result["max_tw_gap"].as<int>(),
+//                      result["max_tw_size"].as<int>(),
+//                      result["cache"].as<bool>(),
+//                      result["temperature"].as<float>(),
+//                      result["dominance"].as<bool>(),
+//                      result["instance_path"].as<std::string>());
+//     opt.model(TSPTW_DP::RL_BAB, "rl-bab-dqn", "use RL with BAB and DQN");
+//     opt.model(TSPTW_DP::RL_DQN, "rl-ilds-dqn", "use RL with ILDS and DQN");
+//     opt.model(TSPTW_DP::RL_PPO, "rl-rbs-ppo", "use RL with RBS and PPO (implies restarts)");
+//     opt.model(TSPTW_DP::NN_HEURISTIC, "nearest", "use nearest heuristic with ILDS");
+//     // TODO switch case on the model?
+//     opt.model(stringToModel(result["model"].as<string>()));
+
+//     opt.solutions(0);
+//     opt.seed(result["seed"].as<int>());
+//     opt.time(result["time"].as<int>());
+//     opt.d_l(result["d_l"].as<int>());
+
+//     if (opt.model() == TSPTW_DP::RL_DQN || opt.model() == TSPTW_DP::NN_HEURISTIC)
+//     {
+//         Search::Options o;
+//         Search::TimeStop ts(opt.time());
+//         o.stop = &ts;
+//         TSPTW_DP *p = new TSPTW_DP(opt);
+//         o.d_l = opt.d_l();
+//         LDS<TSPTW_DP> engine(p, o);
+//         delete p;
+//         cout << "n_city,seed,time,tour_cost" << std::endl;
+//         while (TSPTW_DP *p = engine.next())
+//         {
+//             int cur_cost = p->cost().val();
+//             if (cur_cost < best_cost)
+//             {
+//                 best_cost = cur_cost;
+//                 int depth = engine.statistics().depth;
+//                 cout << p->to_string() << endl;
+//             }
+//             delete p;
+//         }
+//         cout << "BEST SOLUTION'S COST: " << best_cost << endl;
+
+//         if (engine.stopped())
+//         {
+//             cout << "TIMEOUT - OPTIMALITY PROOF NOT REACHED" << endl;
+//         }
+//         else
+//         {
+//             cout << "SEARCH COMPLETED - SOLUTION FOUND IS OPTIMAL" << endl;
+//         }
+//     }
+
+//     else if (opt.model() == TSPTW_DP::RL_BAB)
+//     {
+//         Search::Options o;
+//         Search::TimeStop ts(opt.time());
+//         o.stop = &ts;
+//         TSPTW_DP *p = new TSPTW_DP(opt);
+//         o.d_l = opt.d_l();
+//         BAB<TSPTW_DP> engine(p, o);
+//         delete p;
+//         cout << "n_city,seed,time,tour_cost" << std::endl;
+//         std::vector<int> solution;
+//         while (TSPTW_DP *p = engine.next())
+//         {
+//             int cur_cost = p->cost().val();
+//             if (cur_cost < best_cost)
+//             {
+//                 best_cost = cur_cost;
+//                 int depth = engine.statistics().depth;
+//                 cout << p->to_string() << endl;
+//                 solution = p->get_travel_to();
+//             }
+//             delete p;
+//         }
+//         cout << "BEST SOLUTION'S COST: " << best_cost << endl;
+//         cout << "Best SOLUTION" << endl;
+//         for (int i = 0; i < solution.size(); i++)
+//         {
+//             cout << solution[i] << " ";
+//         }
+//         cout << endl;
+//         if (engine.stopped())
+//         {
+//             cout << "TIMEOUT - OPTIMALITY PROOF NOT REACHED" << endl;
+//         }
+//         else
+//         {
+//             cout << "SEARCH COMPLETED - SOLUTION FOUND IS OPTIMAL" << endl;
+//         }
+//     }
+
+//     else if (opt.model() == TSPTW_DP::RL_PPO)
+//     {
+//         Search::Options o;
+
+//         Search::TimeStop ts(opt.time());
+//         o.stop = &ts;
+//         TSPTW_DP *p = new TSPTW_DP(opt);
+
+//         Search::Cutoff *c = Search::Cutoff::luby(result["luby"].as<int>());
+//         o.cutoff = c;
+//         RBS<TSPTW_DP, BAB> engine(p, o);
+//         delete p;
+
+//         cout << "n_city,seed,time,tour_cost" << std::endl;
+//         while (TSPTW_DP *p = engine.next())
+//         {
+//             int cur_cost = p->cost().val();
+//             if (cur_cost < best_cost)
+//             {
+//                 best_cost = cur_cost;
+//                 int num_nodes = engine.statistics().node;
+//                 int num_fail = engine.statistics().fail;
+//                 cout << p->to_string() << endl;
+//             }
+//             delete p;
+//         }
+//         cout << "BEST SOLUTION: " << best_cost << endl;
+//         if (engine.stopped())
+//         {
+//             cout << "TIMEOUT - OPTIMALITY PROOF NOT REACHED" << endl;
+//         }
+//         else
+//         {
+//             cout << "SEARCH COMPLETED - SOLUTION FOUND IS OPTIMAL" << endl;
+//         }
+//     }
+
+//     else
+//     {
+//         cout << "Model not implemented" << std::endl;
+//     }
+
+//     return 0;
+// }

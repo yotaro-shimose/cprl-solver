@@ -7,7 +7,9 @@ SET(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_MODULE_PATH})
 find_package(Gecode 6.2 COMPONENTS Driver Float Int Kernel Minimodel Search Set Support)
 find_package(Threads)
 
-add_executable(solver_tsptw solver.cpp)
+pybind11_add_module(solver_tsptw solver.cpp)
+
+# add_executable(solver_tsptw solver.cpp)
 # Link Gecode to target test
 target_link_libraries(solver_tsptw PRIVATE pybind11::embed
     Gecode::Driver

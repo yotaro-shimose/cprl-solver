@@ -8,12 +8,13 @@ from src.problem.tsptw.environment.tsptw import TSPTW
 from src.problem.tsptw.learning.actor_critic import ActorCritic
 from src.architecture.graph_attention_network import GATNetwork
 
+
 class SolverBinding(object):
     """
     Definition of the c++ and the pytorch model.
     """
 
-    def __init__(self, load_folder, n_city, grid_size, max_tw_gap, max_tw_size, seed, rl_algorithm):
+    def __init__(self, load_folder, n_city, grid_size, max_tw_gap, max_tw_size, seed, rl_algorithm, instance_path=""):
         """
         Initialization of the binding
         :param load_folder: folder where the pytorch model (.pth.tar) is saved
@@ -23,6 +24,7 @@ class SolverBinding(object):
         :param max_tw_size: time windows of cities will be in the range [0, max_tw_size
         :param seed: seed used for generating the instance
         :param rl_algorithm: 'ppo' or 'dqn'
+        :param instance_path: json path to load tsptw instance from
         """
 
         self.n_city = n_city
@@ -33,16 +35,21 @@ class SolverBinding(object):
         self.seed = seed
 
         self.max_dist = np.sqrt(self.grid_size ** 2 + self.grid_size ** 2)
-        self.max_tw_value = (self.n_city - 1) * (self.max_tw_size + self.max_tw_gap)
-
-        self.instance =  TSPTW.generate_random_instance(n_city=self.n_city, grid_size=self.grid_size,
-                                                        max_tw_gap=self.max_tw_gap, max_tw_size=self.max_tw_size,
-                                                        seed=seed, is_integer_instance=True)
+        self.max_tw_value = (self.n_city - 1) * \
+            (self.max_tw_size + self.max_tw_gap)
+        if instance_path:
+            self.instance = TSPTW.load_json(
+                instance_path, is_integer_instance=True)
+        else:
+            self.instance = TSPTW.generate_random_instance(n_city=self.n_city, grid_size=self.grid_size,
+                                                           max_tw_gap=self.max_tw_gap, max_tw_size=self.max_tw_size,
+                                                           seed=seed, is_integer_instance=True)
 
         self.load_folder = load_folder
         self.model_file, self.latent_dim, self.hidden_layer, self.n_node_feat, self.n_edge_feat = self.find_model()
 
-        self.edge_feat_tensor = self.instance.get_edge_feat_tensor(self.max_dist)
+        self.edge_feat_tensor = self.instance.get_edge_feat_tensor(
+            self.max_dist)
 
         self.input_graph = self.initialize_graph()
 
@@ -53,17 +60,22 @@ class SolverBinding(object):
                          (self.latent_dim, self.latent_dim),
                          (self.latent_dim, self.latent_dim)]
 
-            self.model = GATNetwork(embedding, self.hidden_layer, self.latent_dim, 1)
-            self.model.load_state_dict(torch.load(self.model_file, map_location='cpu'), strict=True)
+            self.model = GATNetwork(
+                embedding, self.hidden_layer, self.latent_dim, 1)
+            self.model.load_state_dict(torch.load(
+                self.model_file, map_location='cpu'), strict=True)
             self.model.eval()
 
         elif self.rl_algorithm == "ppo":
 
             # reproduce the NameSpace of argparse
-            args = SimpleNamespace(latent_dim=self.latent_dim, hidden_layer=self.hidden_layer)
-            self.actor_critic_network = ActorCritic(args, self.n_node_feat, self.n_edge_feat)
+            args = SimpleNamespace(
+                latent_dim=self.latent_dim, hidden_layer=self.hidden_layer)
+            self.actor_critic_network = ActorCritic(
+                args, self.n_node_feat, self.n_edge_feat)
 
-            self.actor_critic_network.load_state_dict(torch.load(self.model_file, map_location='cpu'), strict=True)
+            self.actor_critic_network.load_state_dict(torch.load(
+                self.model_file, map_location='cpu'), strict=True)
             self.model = self.actor_critic_network.action_layer
             self.model.eval()
 
@@ -102,7 +114,8 @@ class SolverBinding(object):
                       1]
                      for i in range(g.number_of_nodes())]
 
-        node_feat_tensor = torch.FloatTensor(node_feat).reshape(g.number_of_nodes(), self.n_node_feat)
+        node_feat_tensor = torch.FloatTensor(node_feat).reshape(
+            g.number_of_nodes(), self.n_node_feat)
 
         g.ndata['n_feat'] = node_feat_tensor
         g.edata['e_feat'] = self.edge_feat_tensor
@@ -147,7 +160,6 @@ class SolverBinding(object):
         model_str = '%s/iter_%d_model.pth.tar' % (self.load_folder, best_it)
         return model_str, latent_dim, hidden_layer, n_node_feat, n_edge_feat
 
-
     def predict_dqn(self, non_fixed_variables, last_visited):
         """
         Given the state related to a node in the CP search, compute the Q-value prediction
@@ -158,7 +170,8 @@ class SolverBinding(object):
         with torch.no_grad():
             self.update_graph_state(non_fixed_variables, last_visited)
             y_pred = self.model(self.input_graph, graph_pooling=False)
-            y_pred_tensor = torch.stack([self.input_graph.ndata["n_feat"] for self.input_graph in dgl.unbatch(y_pred)]).squeeze(dim=2)
+            y_pred_tensor = torch.stack([self.input_graph.ndata["n_feat"]
+                                        for self.input_graph in dgl.unbatch(y_pred)]).squeeze(dim=2)
             y_pred_list = y_pred_tensor.data.cpu().numpy().flatten()
 
         return y_pred_list
@@ -182,9 +195,11 @@ class SolverBinding(object):
         available_tensor[non_fixed_variables] = 1
 
         action_probs = action_probs + torch.abs(torch.min(action_probs))
-        action_probs = action_probs - torch.max(action_probs * available_tensor)
+        action_probs = action_probs - \
+            torch.max(action_probs * available_tensor)
 
-        y_pred_list = ActorCritic.masked_softmax(action_probs, available_tensor, dim=0, temperature=temperature)
+        y_pred_list = ActorCritic.masked_softmax(
+            action_probs, available_tensor, dim=0, temperature=temperature)
         y_pred_list = y_pred_list.data.cpu().numpy().flatten()
 
         return y_pred_list
@@ -205,10 +220,9 @@ class SolverBinding(object):
                       1 if i == last_visited else 0]
                      for i in range(self.input_graph.number_of_nodes())]
 
-        node_feat_tensor = torch.FloatTensor(node_feat).reshape(self.input_graph.number_of_nodes(), self.n_node_feat)
+        node_feat_tensor = torch.FloatTensor(node_feat).reshape(
+            self.input_graph.number_of_nodes(), self.n_node_feat)
 
         self.input_graph.edata['e_feat'] = self.edge_feat_tensor
         self.input_graph.ndata['n_feat'] = node_feat_tensor
         self.input_graph = dgl.batch([self.input_graph])
-
-

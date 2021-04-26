@@ -166,3 +166,7 @@ trained-models
 
 # Temporary File
 temp.py
+temp.ipynb
+
+# Problem Instances
+instances

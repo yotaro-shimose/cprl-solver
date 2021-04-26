@@ -21,7 +21,7 @@ hidden_layer=4
 
 # Others
 plot_training=1 # Boolean value: plot the training curve or not
-mode=cpu
+mode=gpu
 
 # Folder to save the trained model
 network_arch=hidden_layers-$hidden_layer-latent_dim-$latent_dim/

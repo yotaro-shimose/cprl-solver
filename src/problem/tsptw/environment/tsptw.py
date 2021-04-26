@@ -3,6 +3,24 @@ import random
 import heapq
 import numpy as np
 import torch
+import json
+
+
+def euclidian_distance(n_city, x_coord, y_coord, is_integer_instance=True):
+    # TODO docstring
+    travel_time = []
+
+    for i in range(n_city):
+
+        dist = [float(np.sqrt((x_coord[i] - x_coord[j]) ** 2 + (y_coord[i] - y_coord[j]) ** 2))
+                for j in range(n_city)]
+
+        if is_integer_instance:
+            dist = [round(x) for x in dist]
+
+        travel_time.append(dist)
+    return travel_time
+
 
 class TSPTW:
 
@@ -37,10 +55,14 @@ class TSPTW:
             cur_travel_time = self.travel_time[i][:]
 
             # +1 because we remove the self-edge (cost 0)
-            k_min_idx_1 = heapq.nsmallest(1 + 1, range(len(cur_travel_time)), cur_travel_time.__getitem__)
-            k_min_idx_5 = heapq.nsmallest(5 + 1, range(len(cur_travel_time)), cur_travel_time.__getitem__)
-            k_min_idx_10 = heapq.nsmallest(10 + 1, range(len(cur_travel_time)), cur_travel_time.__getitem__)
-            k_min_idx_20 = heapq.nsmallest(20 + 1, range(len(cur_travel_time)), cur_travel_time.__getitem__)
+            k_min_idx_1 = heapq.nsmallest(
+                1 + 1, range(len(cur_travel_time)), cur_travel_time.__getitem__)
+            k_min_idx_5 = heapq.nsmallest(
+                5 + 1, range(len(cur_travel_time)), cur_travel_time.__getitem__)
+            k_min_idx_10 = heapq.nsmallest(
+                10 + 1, range(len(cur_travel_time)), cur_travel_time.__getitem__)
+            k_min_idx_20 = heapq.nsmallest(
+                20 + 1, range(len(cur_travel_time)), cur_travel_time.__getitem__)
 
             for j in range(self.n_city):
 
@@ -78,7 +100,6 @@ class TSPTW:
 
         return edge_feat_tensor
 
-
     @staticmethod
     def generate_random_instance(n_city, grid_size, max_tw_gap, max_tw_size,
                                  is_integer_instance, seed):
@@ -100,18 +121,10 @@ class TSPTW:
         x_coord = [rand.uniform(0, grid_size) for _ in range(n_city)]
         y_coord = [rand.uniform(0, grid_size) for _ in range(n_city)]
 
-        travel_time = []
+        travel_time = euclidian_distance(
+            n_city, x_coord, y_coord, is_integer_instance)
+
         time_windows = np.zeros((n_city, 2))
-
-        for i in range(n_city):
-
-            dist = [float(np.sqrt((x_coord[i] - x_coord[j]) ** 2 + (y_coord[i] - y_coord[j]) ** 2))
-                    for j in range(n_city)]
-
-            if is_integer_instance:
-                dist = [round(x) for x in dist]
-
-            travel_time.append(dist)
 
         random_solution = list(range(1, n_city))
         rand.shuffle(random_solution)
@@ -139,6 +152,38 @@ class TSPTW:
             time_windows[cur_city, :] = [rand_tw_lb, rand_tw_ub]
 
         return TSPTW(n_city, travel_time, x_coord, y_coord, time_windows)
+
+    @staticmethod
+    def load_json(path, is_integer_instance=True):
+        # TODO docstring
+        tsptw_json = None
+        with open(path, mode="r") as file:
+            tsptw_json = json.load(file)
+            tsptw_json["travel_time"] = euclidian_distance(
+                n_city=tsptw_json["n_city"],
+                x_coord=tsptw_json["x_coord"],
+                y_coord=tsptw_json["y_coord"],
+                is_integer_instance=is_integer_instance
+            )
+        return TSPTW(**tsptw_json)
+
+    def save(self, path):
+        # TODO docstring
+        with open(path, mode="w") as file:
+            tsptw_dict = dict()
+            tsptw_dict["n_city"] = self.n_city
+            tsptw_dict["travel_time"] = self.travel_time
+            tsptw_dict["x_coord"] = self.x_coord
+            tsptw_dict["y_coord"] = self.y_coord
+            if isinstance(self.time_windows, np.ndarray):
+                tsptw_dict["time_windows"] = self.time_windows.tolist()
+            elif isinstance(self.time_windows, list):
+                tsptw_dict["time_windows"] = self.time_windows
+            else:
+                raise TypeError("Unexpected time windows type")
+
+            with open(path, "w") as file:
+                json.dump(tsptw_dict, file)
 
     @staticmethod
     def generate_dataset(size, n_city, grid_size, max_tw_gap, max_tw_size, is_integer_instance, seed):
