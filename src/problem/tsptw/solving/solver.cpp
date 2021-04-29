@@ -33,19 +33,16 @@ int best_cost = 100000000;
 class OptionsTSPTW : public Options
 {
 public:
-    int number_cities;
-    int grid_size;
-    int max_tw_gap;
-    int max_tw_size;
+    py::object instance;
+    int n_nodes_trained;
     bool cache;
     float temperature;
     bool dominance;
-    string instance_path;
     /// Initialize options for example with name \a s
-    OptionsTSPTW(const char *s, int number_cities0, int grid_size0, int max_tw_gap0, int max_tw_size0,
-                 bool cache0, float temperature0, bool dominance0, string instance_path0)
-        : Options(s), number_cities(number_cities0), grid_size(grid_size0), max_tw_gap(max_tw_gap0), max_tw_size(max_tw_size0),
-          cache(cache0), temperature(temperature0), dominance(dominance0), instance_path(instance_path0) {}
+    OptionsTSPTW(const char *s, py::object instance0, int n_nodes_trained0,
+                 bool cache0, float temperature0, bool dominance0)
+        : Options(s), instance(instance0), n_nodes_trained(n_nodes_trained0),
+          cache(cache0), temperature(temperature0), dominance(dominance0) {}
 };
 
 class TSPTW_DP : public IntMinimizeScript
@@ -79,8 +76,7 @@ public:
     /* Constructor */
     TSPTW_DP(const OptionsTSPTW &opt) : IntMinimizeScript(opt), tour_cost(*this, 0, 100000)
     {
-
-        m = opt.number_cities;
+        m = opt.instance.attr("n_city").cast<int>();
         seed = opt.seed();
         this->temperature = opt.temperature;
         this->use_cache = opt.cache;
@@ -99,11 +95,12 @@ public:
             mode = "ppo";
         }
 
-        string model_folder = "./selected-models/" + mode + "/tsptw/n-city-" + std::to_string(m) +
-                              "/grid-" + std::to_string(opt.grid_size) + "-tw-" + std::to_string(opt.max_tw_gap) + "-" + std::to_string(opt.max_tw_size);
+        string model_folder = "./selected-models/" + mode + "/tsptw/n-city-" + std::to_string(opt.n_nodes_trained) +
+                              "/grid-" + std::to_string(100) +
+                              "-tw-" + std::to_string(10) + "-" + std::to_string(100);
 
         auto to_run_module = py::module::import("src.problem.tsptw.solving.solver_binding");
-        python_binding = to_run_module.attr("SolverBinding")(model_folder, m, opt.grid_size, opt.max_tw_gap, opt.max_tw_size, seed, mode, opt.instance_path);
+        python_binding = to_run_module.attr("SolverBinding")(model_folder, opt.instance, mode);
 
         auto travel_time_python = python_binding.attr("get_travel_time_matrix")();
         this->travel_time = travel_time_python.cast<std::vector<std::vector<double>>>();
@@ -471,21 +468,19 @@ TSPTW_DP::ModelType stringToModel(std::string const &inString)
 }
 
 // Solver Function
-vector<int> solve(int n_city, string instance_path)
+vector<int> solve(py::object instance, int time_limit_second, int n_nodes_trained)
 {
-
     // py::scoped_interpreter guard{};
+    int time_limit = time_limit_second * 1000;
     best_cost = 100000000;
     // Options Settings
-    OptionsTSPTW opt("TSPTW problem",
-                     n_city,
-                     100,
-                     10,
-                     100,
-                     1,
-                     1.,
-                     1,
-                     instance_path);
+    OptionsTSPTW opt(
+        "TSPTW problem",
+        instance,
+        n_nodes_trained,
+        true,
+        1.,
+        true);
     opt.model(TSPTW_DP::RL_BAB, "rl-bab-dqn", "use RL with BAB and DQN");
     opt.model(TSPTW_DP::RL_DQN, "rl-ilds-dqn", "use RL with ILDS and DQN");
     opt.model(TSPTW_DP::RL_PPO, "rl-rbs-ppo", "use RL with RBS and PPO (implies restarts)");
@@ -493,7 +488,7 @@ vector<int> solve(int n_city, string instance_path)
     opt.model(stringToModel("rl-bab-dqn"));
     opt.solutions(0);
     opt.seed(19);
-    opt.time(6000);
+    opt.time(time_limit);
     opt.d_l(50);
 
     // Solver Initialization

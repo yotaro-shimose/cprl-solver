@@ -24,7 +24,7 @@ def euclidian_distance(n_city, x_coord, y_coord, is_integer_instance=True):
 
 class TSPTW:
 
-    def __init__(self, n_city, travel_time, x_coord, y_coord, time_windows):
+    def __init__(self, n_city, travel_time, x_coord, y_coord, time_windows, grid_size=100, max_travel_time=None):
         """
         Create an instance of the TSPTW problem
         :param n_city: number of cities
@@ -39,6 +39,8 @@ class TSPTW:
         self.x_coord = x_coord
         self.y_coord = y_coord
         self.time_windows = time_windows
+        self.grid_size = grid_size
+        self.max_travel_time = max_travel_time
         self.graph = self.build_graph()
 
     def build_graph(self):
@@ -150,40 +152,41 @@ class TSPTW:
                 rand_tw_ub = np.ceil(rand_tw_ub)
 
             time_windows[cur_city, :] = [rand_tw_lb, rand_tw_ub]
+        max_travel_time = (n_city - 1) * (max_tw_size + max_tw_gap)
 
-        return TSPTW(n_city, travel_time, x_coord, y_coord, time_windows)
+        return TSPTW(n_city, travel_time, x_coord, y_coord, time_windows, grid_size, max_travel_time)
 
-    @staticmethod
-    def load_json(path, is_integer_instance=True):
-        # TODO docstring
-        tsptw_json = None
-        with open(path, mode="r") as file:
-            tsptw_json = json.load(file)
-            tsptw_json["travel_time"] = euclidian_distance(
-                n_city=tsptw_json["n_city"],
-                x_coord=tsptw_json["x_coord"],
-                y_coord=tsptw_json["y_coord"],
-                is_integer_instance=is_integer_instance
-            )
-        return TSPTW(**tsptw_json)
+    # @staticmethod
+    # def load_json(path, is_integer_instance=True):
+    #     # TODO docstring
+    #     tsptw_json = None
+    #     with open(path, mode="r") as file:
+    #         tsptw_json = json.load(file)
+    #         tsptw_json["travel_time"] = euclidian_distance(
+    #             n_city=tsptw_json["n_city"],
+    #             x_coord=tsptw_json["x_coord"],
+    #             y_coord=tsptw_json["y_coord"],
+    #             is_integer_instance=is_integer_instance
+    #         )
+    #     return TSPTW(**tsptw_json)
 
-    def save(self, path):
-        # TODO docstring
-        with open(path, mode="w") as file:
-            tsptw_dict = dict()
-            tsptw_dict["n_city"] = self.n_city
-            tsptw_dict["travel_time"] = self.travel_time
-            tsptw_dict["x_coord"] = self.x_coord
-            tsptw_dict["y_coord"] = self.y_coord
-            if isinstance(self.time_windows, np.ndarray):
-                tsptw_dict["time_windows"] = self.time_windows.tolist()
-            elif isinstance(self.time_windows, list):
-                tsptw_dict["time_windows"] = self.time_windows
-            else:
-                raise TypeError("Unexpected time windows type")
+    # def save(self, path):
+    #     # TODO docstring
+    #     with open(path, mode="w") as file:
+    #         tsptw_dict = dict()
+    #         tsptw_dict["n_city"] = self.n_city
+    #         tsptw_dict["travel_time"] = self.travel_time
+    #         tsptw_dict["x_coord"] = self.x_coord
+    #         tsptw_dict["y_coord"] = self.y_coord
+    #         if isinstance(self.time_windows, np.ndarray):
+    #             tsptw_dict["time_windows"] = self.time_windows.tolist()
+    #         elif isinstance(self.time_windows, list):
+    #             tsptw_dict["time_windows"] = self.time_windows
+    #         else:
+    #             raise TypeError("Unexpected time windows type")
 
-            with open(path, "w") as file:
-                json.dump(tsptw_dict, file)
+        with open(path, "w") as file:
+            json.dump(tsptw_dict, file)
 
     @staticmethod
     def generate_dataset(size, n_city, grid_size, max_tw_gap, max_tw_size, is_integer_instance, seed):

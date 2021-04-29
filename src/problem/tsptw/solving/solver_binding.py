@@ -14,36 +14,20 @@ class SolverBinding(object):
     Definition of the c++ and the pytorch model.
     """
 
-    def __init__(self, load_folder, n_city, grid_size, max_tw_gap, max_tw_size, seed, rl_algorithm, instance_path=""):
+    def __init__(self, load_folder: str, instance: TSPTW, rl_algorithm: str):
         """
         Initialization of the binding
         :param load_folder: folder where the pytorch model (.pth.tar) is saved
-        :param n_city: number of cities of the instance
-        :param grid_size: x-pos/y-pos of cities will be in the range [0, grid_size]
-        :param max_tw_gap: maximum time windows gap allowed between the cities
-        :param max_tw_size: time windows of cities will be in the range [0, max_tw_size
-        :param seed: seed used for generating the instance
         :param rl_algorithm: 'ppo' or 'dqn'
-        :param instance_path: json path to load tsptw instance from
         """
 
-        self.n_city = n_city
-        self.grid_size = grid_size
-        self.max_tw_gap = max_tw_gap
-        self.max_tw_size = max_tw_size
+        self.instance = instance
+        self.n_city = instance.n_city
+        self.grid_size = instance.grid_size
         self.rl_algorithm = rl_algorithm
-        self.seed = seed
 
         self.max_dist = np.sqrt(self.grid_size ** 2 + self.grid_size ** 2)
-        self.max_tw_value = (self.n_city - 1) * \
-            (self.max_tw_size + self.max_tw_gap)
-        if instance_path:
-            self.instance = TSPTW.load_json(
-                instance_path, is_integer_instance=True)
-        else:
-            self.instance = TSPTW.generate_random_instance(n_city=self.n_city, grid_size=self.grid_size,
-                                                           max_tw_gap=self.max_tw_gap, max_tw_size=self.max_tw_size,
-                                                           seed=seed, is_integer_instance=True)
+        self.max_tw_value = instance.max_travel_time
 
         self.load_folder = load_folder
         self.model_file, self.latent_dim, self.hidden_layer, self.n_node_feat, self.n_edge_feat = self.find_model()

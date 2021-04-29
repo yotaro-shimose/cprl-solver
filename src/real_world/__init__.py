@@ -219,7 +219,7 @@ def to_virtual_time(real_time, grid_size=100):
 
 
 def generate_field_instance(n_city, grid_size, solvable=False, max_tw_gap=10, max_tw_size=10,
-                            is_integer_instance=True, seed=-1):
+                            is_integer_instance=True, max_travel_time=to_virtual_time(EIGHT_HOURS), seed=-1):
     rand = random.Random()
     if seed != -1:
         rand.seed(seed)
@@ -240,13 +240,14 @@ def generate_field_instance(n_city, grid_size, solvable=False, max_tw_gap=10, ma
         n_city, x_coord, y_coord, is_integer_instance)
 
     if solvable:
+        max_travel_time = (n_city - 1) * (max_tw_gap + max_tw_size)
         time_windows = np.zeros((n_city, 2))
         random_solution = list(range(1, n_city))
         rand.shuffle(random_solution)
 
         random_solution = [0] + random_solution
 
-        time_windows[0, :] = [0, to_virtual_time(EIGHT_HOURS)]
+        time_windows[0, :] = [0, max_travel_time]
 
         for i in range(1, n_city):
 
@@ -265,6 +266,7 @@ def generate_field_instance(n_city, grid_size, solvable=False, max_tw_gap=10, ma
                 rand_tw_ub = np.ceil(rand_tw_ub)
 
             time_windows[cur_city, :] = [rand_tw_lb, rand_tw_ub]
+        max_travel_time = (n_city - 1) * (max_tw_gap + max_tw_size)
 
     else:
         # Create time window options
@@ -280,4 +282,4 @@ def generate_field_instance(n_city, grid_size, solvable=False, max_tw_gap=10, ma
             time_windows.append(time_window)
         time_windows = np.array(time_windows)
 
-    return TSPTW(n_city, travel_time, x_coord, y_coord, time_windows)
+    return TSPTW(n_city, travel_time, x_coord, y_coord, time_windows, grid_size, max_travel_time)
