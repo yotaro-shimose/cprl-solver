@@ -1,10 +1,10 @@
 import numpy as np
 import pandas as pd
-
+from typing import Tuple
 # 文京Constants
 EIGHT_HOURS = 8 * 60
 VEHICLE_SPEED = 8 / 60 * 1000  # 時速8km/hを分速換算(現実世界における速度)
-RADIUS = 250
+RADIUS = 250  # 現実換算のx, y平面上の距離
 
 PATH = 'data/csv/longi_lati.csv'
 # Open Field Plot Data
@@ -12,7 +12,8 @@ with open(PATH, 'r') as file:
     df = pd.read_csv(file)
 
 
-def in_field(x, y):
+# この関数は非常に低速なので全Gridについて判定したリストを一度用意してそれを用いてO(1)で使うように。
+def in_field(x: float, y: float) -> bool:
     for x_f, y_f in zip(field_x, field_y):
         if (x_f - x) ** 2 + (y_f - y) ** 2 < RADIUS ** 2:
             return True
@@ -24,7 +25,8 @@ REAL_X_RANGE = np.array([np.min(field_x), np.max(field_x)])
 REAL_Y_RANGE = np.array([np.min(field_y), np.max(field_y)])
 
 
-def calc_xy(phi_deg, lambda_deg, phi0_deg=36, lambda0_deg=139+50./60):
+def calc_xy(phi_deg: float, lambda_deg: float, phi0_deg: float = 36,
+            lambda0_deg: float = 139+50./60) -> Tuple[float, float]:
     """ 緯度経度を平面直角座標に変換する
     - input:
         (phi_deg, lambda_deg): 変換したい緯度・経度[度]（分・秒でなく小数であることに注意）
@@ -99,7 +101,8 @@ def calc_xy(phi_deg, lambda_deg, phi0_deg=36, lambda0_deg=139+50./60):
     return x, y  # [m]
 
 
-def calc_lat_lon(x, y, phi0_deg=36, lambda0_deg=139+50./60):
+def calc_lat_lon(x: float, y: float, phi0_deg: float = 36,
+                 lambda0_deg: float = 139+50./60) -> Tuple[float, float]:
     """ 平面直角座標を緯度経度に変換する
     - input:
         (x, y): 変換したいx, y座標[m]
@@ -187,7 +190,7 @@ def calc_lat_lon(x, y, phi0_deg=36, lambda0_deg=139+50./60):
     return np.rad2deg(latitude), np.rad2deg(longitude)  # [deg]
 
 
-def to_real_coord(virtual_x, virtual_y, grid_size=100):
+def to_real_coord(virtual_x: float, virtual_y: float, grid_size=100) -> Tuple[float, float]:
     x_range = REAL_X_RANGE[1] - REAL_X_RANGE[0]
     y_range = REAL_Y_RANGE[1] - REAL_Y_RANGE[0]
     map_range = max(x_range, y_range)
@@ -196,7 +199,7 @@ def to_real_coord(virtual_x, virtual_y, grid_size=100):
     return real_x, real_y
 
 
-def to_virtual_coord(real_x, real_y, grid_size=100):
+def to_virtual_coord(real_x, real_y, grid_size=100) -> Tuple[float, float]:
     x_range = REAL_X_RANGE[1] - REAL_X_RANGE[0]
     y_range = REAL_Y_RANGE[1] - REAL_Y_RANGE[0]
     map_range = max(x_range, y_range)
@@ -205,14 +208,14 @@ def to_virtual_coord(real_x, real_y, grid_size=100):
     return virtual_x, virtual_y
 
 
-def to_real_time(virtual_time, grid_size=100):
+def to_real_time(virtual_time, grid_size=100) -> float:
     x_range = REAL_X_RANGE[1] - REAL_X_RANGE[0]
     y_range = REAL_Y_RANGE[1] - REAL_Y_RANGE[0]
     map_range = max(x_range, y_range)
     return virtual_time * map_range / grid_size / VEHICLE_SPEED
 
 
-def to_virtual_time(real_time, grid_size=100):
+def to_virtual_time(real_time, grid_size=100) -> float:
     x_range = REAL_X_RANGE[1] - REAL_X_RANGE[0]
     y_range = REAL_Y_RANGE[1] - REAL_Y_RANGE[0]
     map_range = max(x_range, y_range)
