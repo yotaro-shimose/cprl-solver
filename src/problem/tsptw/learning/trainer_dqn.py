@@ -1,20 +1,17 @@
+from src.util.prioritized_replay_memory import PrioritizedReplayMemory
+from src.problem.tsptw.environment.tsptw import TSPTW
+from src.problem.tsptw.learning.brain_dqn import BrainDQN
+from src.problem.tsptw.environment.environment import Environment
+import dgl
+import numpy as np
+import sys
+import time
+import random
+import matplotlib.pyplot as plt
 import matplotlib as mpl
 
 mpl.use('Agg')
-import matplotlib.pyplot as plt
 
-import random
-import time
-import sys
-
-import numpy as np
-
-import dgl
-
-from src.problem.tsptw.environment.environment import Environment
-from src.problem.tsptw.learning.brain_dqn import BrainDQN
-from src.problem.tsptw.environment.tsptw import TSPTW
-from src.util.prioritized_replay_memory import PrioritizedReplayMemory
 
 #  definition of constants
 MEMORY_CAPACITY = 50000
@@ -26,6 +23,7 @@ RANDOM_TRIAL = 100
 MAX_BETA = 10
 MIN_VAL = -1000000
 MAX_VAL = 1000000
+EPS = 1e-7
 
 
 class TrainerDQN:
@@ -42,7 +40,8 @@ class TrainerDQN:
         self.args = args
         np.random.seed(self.args.seed)
         self.instance_size = self.args.n_city
-        self.n_action = self.instance_size - 1  # Because we begin at a given city, so we have 1 city less to visit
+        # Because we begin at a given city, so we have 1 city less to visit
+        self.n_action = self.instance_size - 1
 
         self.num_node_feats = 6
         self.num_edge_feats = 5
@@ -54,13 +53,14 @@ class TrainerDQN:
                                                      max_tw_size=self.args.max_tw_size, is_integer_instance=False,
                                                      seed=np.random.randint(10000))
 
-        self.brain = BrainDQN(self.args, self.num_node_feats, self.num_edge_feats)
+        self.brain = BrainDQN(
+            self.args, self.num_node_feats, self.num_edge_feats)
         self.memory = PrioritizedReplayMemory(MEMORY_CAPACITY)
 
         self.steps_done = 0
         self.init_memory_counter = 0
 
-        if args.n_step == -1: # We go until the end of the episode
+        if args.n_step == -1:  # We go until the end of the episode
             self.n_step = self.n_action
         else:
             self.n_step = self.args.n_step
@@ -112,7 +112,8 @@ class TrainerDQN:
                     reward_list.append(avg_reward)
                     plt.clf()
 
-                    plt.plot(iter_list, reward_list, linestyle="-", label="DQN", color='y')
+                    plt.plot(iter_list, reward_list,
+                             linestyle="-", label="DQN", color='y')
 
                     plt.legend(loc=3)
                     out_file = '%s/training_curve_reward.png' % self.args.save_dir
@@ -186,7 +187,8 @@ class TrainerDQN:
                 if self.steps_done % UPDATE_TARGET_FREQUENCY == 0:
                     self.brain.update_target_model()
 
-            cur_state, reward = env.get_next_state_with_reward(cur_state, action)
+            cur_state, reward = env.get_next_state_with_reward(
+                cur_state, action)
 
             graph_list[idx] = graph
             rewards_vector[idx] = reward
@@ -228,11 +230,13 @@ class TrainerDQN:
             sample = (state_features, action, reward, next_state_features)
 
             if memory_initialization:
-                error = abs(reward)  # the error of the replay memory is equals to the reward, at initialization
+                # the error of the replay memory is equals to the reward, at initialization
+                error = abs(reward)
                 self.init_memory_counter += 1
                 step_loss = 0
             else:
-                x, y, errors = self.get_targets([(0, sample, 0)])  # feed the memory with the new samples
+                # feed the memory with the new samples
+                x, y, errors = self.get_targets([(0, sample, 0)])
                 error = errors[0]
                 step_loss = self.learning()  # learning procedure
 
@@ -263,7 +267,8 @@ class TrainerDQN:
 
             action = self.select_action(graph, avail)
 
-            cur_state, reward = env.get_next_state_with_reward(cur_state, action)
+            cur_state, reward = env.get_next_state_with_reward(
+                cur_state, action)
 
             total_reward += reward
 
@@ -301,12 +306,13 @@ class TrainerDQN:
 
         batched_graph = dgl.batch([graph, ])
         available = available.astype(bool)
-        out = self.brain.predict(batched_graph, target=False)[0].reshape(-1)
+        out = self.brain.predict(
+            batched_graph, target=False)[0].reshape(-1)
 
         if len(out[available]) > 1:
-            logits = (out[available] - out[available].mean())
+            logits = out[available] - out[available].mean()
             div = ((logits ** 2).sum() / (len(logits) - 1)) ** 0.5
-            logits = logits / div
+            logits = logits / (div + EPS)
 
             probabilities = np.exp(beta * logits)
             norm = probabilities.sum()
@@ -320,7 +326,8 @@ class TrainerDQN:
         else:
             probabilities = [1]
 
-        action_idx = np.random.choice(np.arange(len(probabilities)), p=probabilities)
+        action_idx = np.random.choice(
+            np.arange(len(probabilities)), p=probabilities)
         action = np.arange(len(out))[available][action_idx]
         return action
 
@@ -357,7 +364,8 @@ class TrainerDQN:
             action = sample[1]
             reward = sample[2]
             next_state_graph, next_state_avail = sample[3]
-            next_action_indices = np.argwhere(next_state_avail == 1).reshape(-1)
+            next_action_indices = np.argwhere(
+                next_state_avail == 1).reshape(-1)
             t = p[i]
 
             q_value_prediction = t[action]
@@ -373,9 +381,11 @@ class TrainerDQN:
                 mask[next_action_indices] = True
 
                 best_valid_next_action_id = np.argmax(p_[i][mask])
-                best_valid_next_action = np.arange(len(mask))[mask.reshape(-1)][best_valid_next_action_id]
+                best_valid_next_action = np.arange(
+                    len(mask))[mask.reshape(-1)][best_valid_next_action_id]
 
-                td_q_value = reward + GAMMA * p_target_[i][best_valid_next_action]
+                td_q_value = reward + GAMMA * \
+                    p_target_[i][best_valid_next_action]
                 t[action] = td_q_value
 
             state = (state_graph, state_avail)
@@ -404,6 +414,3 @@ class TrainerDQN:
         loss = self.brain.train(x, y)
 
         return round(loss, 4)
-
-
-

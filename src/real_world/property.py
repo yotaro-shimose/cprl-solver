@@ -13,8 +13,10 @@ class RealDQNArgs:
         latent_dim: int,
         max_softmax_beta: float,
         n_step: int,
+        n_episode: int,
         mode: str,
         plot_training: bool,
+        save_dir: str,
     ):
         self.n_city = n_city
         self.grid_size = grid_size
@@ -28,5 +30,7 @@ class RealDQNArgs:
         self.latent_dim = latent_dim
         self.max_softmax_beta = max_softmax_beta
         self.n_step = n_step
+        self.n_episode = n_episode
         self.mode = mode
         self.plot_training = bool(plot_training)
+        self.save_dir = save_dir

@@ -58,8 +58,10 @@ def parse_arguments():
         args.latent_dim,
         args.max_softmax_beta,
         args.n_step,
+        args.n_episode,
         args.mode,
-        args.plot_training
+        args.plot_training,
+        args.save_dir,
     )
 
 
@@ -84,8 +86,10 @@ if __name__ == '__main__':
     print("[INFO] latent_dim: %d" % args.latent_dim)
     print("[INFO] softmax_beta: %d" % args.max_softmax_beta)
     print("[INFO] n_step: %d" % args.n_step)
+    print("[INFO] n_episode: %d" % args.n_episode)
     print("[INFO] mode: %s" % args.mode)
     print("[INFO] plot_training: %s" % args.plot_training)
+    print("[INFO] plot_training: %s" % args.save_dir)
     print("***********************************************************")
     sys.stdout.flush()
 
